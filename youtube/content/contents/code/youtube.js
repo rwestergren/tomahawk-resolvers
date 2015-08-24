@@ -45,6 +45,7 @@ var YoutubeResolver = Tomahawk.extend( TomahawkResolver, {
             this.includeLive = userConfig.includeLive;
             this.qualityPreference = userConfig.qualityPreference;
             this.debugMode = userConfig.debugMode;
+            this.includeUnverified = userConfig.includeUnverified;
         }
         else
         {
@@ -53,6 +54,7 @@ var YoutubeResolver = Tomahawk.extend( TomahawkResolver, {
             this.includeLive = false;
             this.qualityPreference = 1;
             this.debugMode = 1;
+            this.includeUnverified = false;
         }
 
         // Protos
@@ -98,6 +100,10 @@ var YoutubeResolver = Tomahawk.extend( TomahawkResolver, {
                 name: "debugMode",
                 widget: "debug",
                 property: "checked"
+            }, {
+                name: "includeUnverified",
+                widget: "unverified",
+                property: "checked"
             }],
             images: [{
                 "youtube.png" : Tomahawk.readBase64("youtube.png")
@@ -111,13 +117,15 @@ var YoutubeResolver = Tomahawk.extend( TomahawkResolver, {
 
         var userConfig = this.getUserConfig();
         if ((userConfig.includeCovers !== this.includeCovers) || (userConfig.includeRemixes !== this.includeRemixes) ||
-            (userConfig.includeLive !== this.includeLive) || (userConfig.qualityPreference !== this.qualityPreference))
+            (userConfig.includeLive !== this.includeLive) || (userConfig.qualityPreference !== this.qualityPreference) ||
+            (userConfig.includeUnverified !== this.includeUnverified))
         {
             this.includeCovers = userConfig.includeCovers;
             this.includeRemixes = userConfig.includeRemixes;
             this.includeLive = userConfig.includeLive;
             this.qualityPreference = userConfig.qualityPreference;
             this.debugMode = userConfig.debugMode;
+            this.includeUnverified = userConfig.includeUnverified;
             this.saveUserConfig();
         }
     },
@@ -708,35 +716,44 @@ var YoutubeResolver = Tomahawk.extend( TomahawkResolver, {
         var verified = [];
         var total = candidates.length;
         var that = this;
-        candidates.forEach( function( candidate ){
-            var trackLookupUrl = "http://ws.audioscrobbler.com/2.0/?method=track.getInfo&api_key=b14d61bf2f7968731eb686c7b4a1516e&format=json&limit=5&artist=" + encodeURIComponent( candidate.artist ) + "&track=" + encodeURIComponent( candidate.track );
-            Tomahawk.asyncRequest( trackLookupUrl, function( xhr ){
-                var response = JSON.parse( xhr.responseText );
-                if ( response.track !== undefined && response.track.name !== undefined && response.track.artist.name !== undefined )
-                {
-                    if ( response.track.name.toLowerCase() === candidate.track.toLowerCase() && response.track.artist.name.toLowerCase() === candidate.artist.toLowerCase() )
+        
+        if ( this.includeUnverified === true )
+        {
+            // Skip verification
+            that.getMetadata( qid, candidates );
+        }
+        else
+        {
+            candidates.forEach( function( candidate ){
+                var trackLookupUrl = "http://ws.audioscrobbler.com/2.0/?method=track.getInfo&api_key=b14d61bf2f7968731eb686c7b4a1516e&format=json&limit=5&artist=" + encodeURIComponent( candidate.artist ) + "&track=" + encodeURIComponent( candidate.track );
+                Tomahawk.asyncRequest( trackLookupUrl, function( xhr ){
+                    var response = JSON.parse( xhr.responseText );
+                    if ( response.track !== undefined && response.track.name !== undefined && response.track.artist.name !== undefined )
                     {
-                        verified.push( candidate );
-                    }
-                }
-                else
-                {
-                    if( response.track !== undefined )
-                    {
-                        that.debugMsg( "Bad track name? " + trackLookupUrl + ": " + JSON.stringify( response.track ) );
+                        if ( response.track.name.toLowerCase() === candidate.track.toLowerCase() && response.track.artist.name.toLowerCase() === candidate.artist.toLowerCase() )
+                        {
+                            verified.push( candidate );
+                        }
                     }
                     else
                     {
-                        that.debugMsg( "Bad result from track lookup? " + trackLookupUrl + ": " + JSON.stringify( response ) );
+                        if( response.track !== undefined )
+                        {
+                            that.debugMsg( "Bad track name? " + trackLookupUrl + ": " + JSON.stringify( response.track ) );
+                        }
+                        else
+                        {
+                            that.debugMsg( "Bad result from track lookup? " + trackLookupUrl + ": " + JSON.stringify( response ) );
+                        }
                     }
-                }
-                total--;
-                if ( total === 0 )
-                {
-                    that.getMetadata( qid, verified );
-                }
+                    total--;
+                    if ( total === 0 )
+                    {
+                        that.getMetadata( qid, verified );
+                    }
+                } );
             } );
-        } );
+        }
     },
 
     getMetadata: function( qid, results )
@@ -856,3 +873,4 @@ var YoutubeResolver = Tomahawk.extend( TomahawkResolver, {
 } );
 
 Tomahawk.resolver.instance = YoutubeResolver;
+
